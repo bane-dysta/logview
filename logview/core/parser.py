@@ -7,17 +7,11 @@
 import re
 import os
 from typing import List, Dict, Optional, Tuple
+from ..utils.config import load_separators, DEFAULT_SEPARATORS
 
 
 class LogParser:
     """日志文件解析器，支持基于分隔符的分块功能"""
-    
-    # 常见分隔符定义
-    COMMON_SEPARATORS = {
-        "grad": "GradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGrad",
-        "irc": "IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC",
-        "custom": ""
-    }
     
     def __init__(self, filename: Optional[str] = None, separator: Optional[str] = None):
         """
@@ -31,11 +25,14 @@ class LogParser:
         self.content = ""
         self.blocks: List[str] = []
         
+        # 加载分隔符配置
+        self.separators = load_separators()
+        
         # 设置分隔符
         if separator:
             self.separator = separator
         else:
-            self.separator = self.COMMON_SEPARATORS["grad"]
+            self.separator = self.separators.get("grad", DEFAULT_SEPARATORS["grad"])
     
     def set_separator(self, separator_type: str = "grad", custom_separator: Optional[str] = None) -> None:
         """
@@ -47,11 +44,11 @@ class LogParser:
         """
         if separator_type == "custom" and custom_separator:
             self.separator = custom_separator
-        elif separator_type in self.COMMON_SEPARATORS:
-            self.separator = self.COMMON_SEPARATORS[separator_type]
+        elif separator_type in self.separators:
+            self.separator = self.separators[separator_type]
         else:
             # 默认使用Grad分隔符
-            self.separator = self.COMMON_SEPARATORS["grad"]
+            self.separator = self.separators.get("grad", DEFAULT_SEPARATORS["grad"])
     
     def load_file(self, filename: Optional[str] = None) -> bool:
         """

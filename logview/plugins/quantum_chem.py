@@ -7,6 +7,11 @@
 from typing import Dict, List, Any
 from .base import Plugin
 import re
+from ..utils.config import (
+    load_separators, DEFAULT_SEPARATORS, 
+    load_keyword_types, DEFAULT_KEYWORD_TYPES, 
+    save_keyword_types
+)
 
 
 class QuantumChemPlugin(Plugin):
@@ -15,34 +20,40 @@ class QuantumChemPlugin(Plugin):
     name = "quantum_chem"
     description = "量子化学程序输出文件支持"
     
-    # 定义常见分隔符
-    SEPARATORS = {
-        "grad": "GradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGrad",
-        "irc": "IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC",
-    }
-    
-    # 常见的量子化学关键词
-    COMMON_KEYWORDS = [
-        "SCF Done", "Excited State   1", "Optimization completed", "normal coordinates",
-        "Orbital symmetries", "Mulliken charges", "APT charges:", "Converged?", 
-        "Standard orientation", "Input orientation", "Frequency", "Failed", 
-        "dipole moments", "Point Number:"
-    ]
-    
-    # 错误关键词
-    ERROR_KEYWORDS = ["Error", "Failed", "错误", "失败"]
-    
-    # 警告关键词
-    WARNING_KEYWORDS = ["Warning", "警告"]
-    
-    # 成功关键词
-    SUCCESS_KEYWORDS = ["SCF Done", "Optimization completed", "Converged"]
-    
     def __init__(self, name: str, description: str):
         """初始化插件"""
         super().__init__(name, description)
         self.viewer = None
         self.highlighter = None
+        
+        # 加载分隔符配置
+        self.separators = load_separators()
+        
+        # 加载关键词类型配置
+        self.keyword_types = load_keyword_types()
+        
+        # 为了向后兼容，提供关键词属性的访问
+        self._common_keywords = self.keyword_types.get("common", DEFAULT_KEYWORD_TYPES["common"])
+        self._error_keywords = self.keyword_types.get("error", DEFAULT_KEYWORD_TYPES["error"])
+        self._warning_keywords = self.keyword_types.get("warning", DEFAULT_KEYWORD_TYPES["warning"])
+        self._success_keywords = self.keyword_types.get("success", DEFAULT_KEYWORD_TYPES["success"])
+    
+    # 为了保持向后兼容，提供只读属性
+    @property
+    def COMMON_KEYWORDS(self):
+        return self._common_keywords
+    
+    @property
+    def ERROR_KEYWORDS(self):
+        return self._error_keywords
+    
+    @property
+    def WARNING_KEYWORDS(self):
+        return self._warning_keywords
+    
+    @property
+    def SUCCESS_KEYWORDS(self):
+        return self._success_keywords
     
     def initialize(self, context: Any) -> None:
         """
@@ -160,13 +171,13 @@ class QuantumChemPlugin(Plugin):
                 
                 # 检查是否包含IRC计算
                 if "IRC" in content and "--IRC--" in content:
-                    return self.SEPARATORS["irc"]
+                    return self.separators.get("irc", DEFAULT_SEPARATORS["irc"])
                 
                 # 默认使用Grad分隔符
-                return self.SEPARATORS["grad"]
+                return self.separators.get("grad", DEFAULT_SEPARATORS["grad"])
         except:
             # 出现错误时使用默认分隔符
-            return self.SEPARATORS["grad"]
+            return self.separators.get("grad", DEFAULT_SEPARATORS["grad"])
     
     def extract_energy(self, block: str) -> float:
         """
