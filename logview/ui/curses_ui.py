@@ -7,12 +7,23 @@
 import curses
 import os
 import sys
+import json
 from typing import Dict, List, Optional, Tuple, Any, Callable
 from ..core.viewer import LogViewer
+from ..plugins.quantum_chem import QuantumChemPlugin
 
 
 class CursesUI:
     """基于curses的终端用户界面"""
+    
+    # 推荐的常用关键词，只用于首次创建配置文件
+    RECOMMENDED_KEYWORDS = [
+        "SCF Done", "Excited State   1", "Optimization completed", 
+        "normal coordinates", "Orbital symmetries", "Mulliken charges", 
+        "APT charges:", "Converged?", "Standard orientation", 
+        "Input orientation", "Frequency", "Failed", "dipole moments", 
+        "Point Number:"
+    ]
     
     def __init__(self, viewer: LogViewer):
         """
@@ -34,8 +45,107 @@ class CursesUI:
         self.command_mode = False
         self.command_buffer = ""
         
+        # 预设关键词列表（完全从配置文件加载）
+        self.preset_keywords = self._load_keywords()
+        
+        # Tab补全变量
+        self.completion_matches = []
+        self.completion_index = 0
+        self.completion_prefix = ""
+        
         # 注册命令处理器
         self.commands = self._setup_commands()
+    
+    def _load_keywords(self) -> List[str]:
+        """
+        加载预设关键词列表，如果配置文件不存在则创建默认配置
+        
+        Returns:
+            List[str]: 关键词列表
+        """
+        # 用户配置目录和文件
+        config_dir = os.path.expanduser("~/.config/logview")
+        config_file = os.path.join(config_dir, "keywords.json")
+        
+        # 如果配置目录不存在则创建
+        if not os.path.exists(config_dir):
+            try:
+                os.makedirs(config_dir, exist_ok=True)
+            except Exception as e:
+                # 创建目录失败，返回空列表
+                return []
+        
+        # 如果配置文件不存在，创建并写入默认关键词
+        if not os.path.exists(config_file):
+            try:
+                with open(config_file, 'w', encoding='utf-8') as f:
+                    json.dump(self.RECOMMENDED_KEYWORDS, f, indent=2)
+                return list(self.RECOMMENDED_KEYWORDS)
+            except Exception as e:
+                # 创建文件失败，返回空列表
+                return []
+        
+        # 如果配置文件存在，读取其中的关键词
+        try:
+            with open(config_file, 'r', encoding='utf-8') as f:
+                keywords = json.load(f)
+                if isinstance(keywords, list):
+                    return [k for k in keywords if isinstance(k, str)]
+                else:
+                    return []
+        except Exception as e:
+            # 读取文件失败，返回空列表
+            return []
+    
+    def save_keywords(self) -> bool:
+        """
+        保存关键词列表到配置文件
+        
+        Returns:
+            bool: 是否成功保存
+        """
+        try:
+            # 确保配置目录存在
+            config_dir = os.path.expanduser("~/.config/logview")
+            os.makedirs(config_dir, exist_ok=True)
+            
+            config_file = os.path.join(config_dir, "keywords.json")
+            
+            with open(config_file, 'w', encoding='utf-8') as f:
+                json.dump(self.preset_keywords, f, indent=2)
+            
+            return True
+        except Exception as e:
+            return False
+    
+    def add_current_search_to_keywords(self) -> bool:
+        """
+        将当前搜索词添加到预设关键词列表中
+        
+        Returns:
+            bool: 是否成功添加
+        """
+        search_term = self.viewer.state.search_term
+        if not search_term:
+            return False
+        
+        # 检查关键词是否已存在（不区分大小写）
+        for keyword in self.preset_keywords:
+            if keyword.lower() == search_term.lower():
+                # 关键词已存在，提供更明确的错误信息
+                self.viewer.set_message(f"关键词 '{search_term}' 已存在于预设列表中")
+                return False
+        
+        # 添加关键词并保存
+        self.preset_keywords.append(search_term)
+        success = self.save_keywords()
+        
+        if success:
+            self.viewer.set_message(f"已添加 '{search_term}' 到预设关键词列表")
+        else:
+            self.viewer.set_message("保存关键词列表失败", True)
+            
+        return success
     
     def _setup_commands(self) -> Dict[str, Callable]:
         """
@@ -80,6 +190,26 @@ class CursesUI:
         self.stdscr = stdscr
         self._setup_curses()
         self._setup_windows()
+        
+        # 清空主屏幕并刷新
+        self.stdscr.clear()
+        self.stdscr.refresh()
+        
+        # 初始化所有窗口的背景和内容
+        self._init_window_backgrounds()
+        
+        # 显示初始内容
+        self.display()
+        
+        # 确保所有窗口都被刷新
+        self.stdscr.noutrefresh()
+        self.status_win.noutrefresh()
+        self.text_win.noutrefresh()
+        self.command_win.noutrefresh()
+        self.message_win.noutrefresh()
+        curses.doupdate()  # 一次性更新所有窗口
+        
+        # 进入主循环
         self._main_loop()
     
     def _setup_curses(self):
@@ -371,14 +501,35 @@ class CursesUI:
         self.command_win.clear()
         self.command_win.bkgd(' ', curses.color_pair(3))
         
-        # 显示命令输入
-        if len(self.command_buffer) > self.width - 1:
-            # 如果命令太长，只显示最后部分
-            display_cmd = self.command_buffer[-(self.width - 1):]
-        else:
-            display_cmd = self.command_buffer
+        try:
+            # 显示命令缓冲区
+            self.command_win.addstr(0, 0, self.command_buffer)
             
-        self.command_win.addstr(0, 0, display_cmd)
+            # 如果有Tab补全结果且搜索命令，显示可能的补全提示
+            if self.command_buffer.startswith('/') or self.command_buffer.startswith('?'):
+                prefix = self.command_buffer[1:]
+                if prefix and self.completion_matches and len(self.completion_matches) > 1:
+                    # 显示其他可能的补全项（最多显示5个）
+                    completion_str = " [Tab: "
+                    other_matches = [match for i, match in enumerate(self.completion_matches[:5]) 
+                                    if i != self.completion_index]
+                    completion_str += ", ".join(other_matches)
+                    if len(self.completion_matches) > 5:
+                        completion_str += ", ..."
+                    completion_str += "]"
+                    
+                    # 确保不超过窗口宽度
+                    max_length = self.width - len(self.command_buffer) - 1
+                    if len(completion_str) > max_length:
+                        completion_str = completion_str[:max_length-3] + "...]"
+                    
+                    # 在命令后面显示补全提示
+                    self.command_win.addstr(0, len(self.command_buffer), completion_str, 
+                                           curses.A_DIM)
+        except curses.error:
+            # 忽略绘制错误
+            pass
+            
         self.command_win.refresh()
     
     def draw_message_bar(self):
@@ -416,7 +567,9 @@ class CursesUI:
             "",
             "搜索和过滤:",
             "  / - 开始搜索",
+            "    + Tab - 关键词补全（循环显示匹配的预设关键词）",
             "  ? - 开始向后搜索",
+            "    + Tab - 关键词补全（同上）",
             "  N - 下一个搜索结果",
             "  P - 上一个搜索结果",
             "  F - 过滤模式 (只显示包含搜索词的块)",
@@ -424,6 +577,10 @@ class CursesUI:
             "  + - 增加关键词聚焦偏移量 (关键词位置上移)",
             "  - - 减少关键词聚焦偏移量 (关键词位置下移)",
             "  c - 清除过滤",
+            "",
+            "命令模式:",
+            "  :addkw - 添加当前搜索词到预设关键词列表",
+            "           (存储在 ~/.config/logview/keywords.json)",
             "",
             "显示选项:",
             "  v - 切换完整文件视图/分块视图",
@@ -477,16 +634,81 @@ class CursesUI:
             elif key == curses.KEY_BACKSPACE or key == 127:  # Backspace键
                 if len(self.command_buffer) > 1:  # 保留命令前缀
                     self.command_buffer = self.command_buffer[:-1]
+                    # 清除之前的补全结果
+                    self.completion_matches = []
+                    self.completion_index = 0
                 else:
                     command_complete = True
                     self.command_mode = False
                     self.display()
             elif key == curses.KEY_RESIZE:
                 self._resize_windows()
+            elif key == 9:  # Tab键
+                # 仅对搜索命令启用补全
+                if self.command_buffer.startswith('/') or self.command_buffer.startswith('?'):
+                    self._handle_tab_completion()
             elif 32 <= key <= 126:  # 可打印字符
                 self.command_buffer += chr(key)
+                # 清除之前的补全结果
+                self.completion_matches = []
+                self.completion_index = 0
         
         curses.curs_set(0)  # 隐藏光标
+    
+    def _handle_tab_completion(self):
+        """处理Tab补全功能"""
+        # 获取当前输入的搜索前缀（不包括命令前缀如/或?）
+        current_text = self.command_buffer[1:]
+        
+        # 如果没有输入前缀，不执行补全
+        if not current_text:
+            return
+        
+        # 如果是首次Tab按下或前缀改变（且不是由补全产生的），重新计算匹配结果
+        if not self.completion_matches or (
+            self.completion_prefix != current_text and 
+            not any(keyword.lower() == current_text.lower() for keyword in self.completion_matches)
+        ):
+            # 记录原始前缀，用于后续补全
+            self.completion_prefix = current_text
+            self.completion_matches = self._find_matches(current_text)
+            self.completion_index = 0
+        else:
+            # 循环浏览匹配结果
+            self.completion_index = (self.completion_index + 1) % max(1, len(self.completion_matches))
+        
+        # 如果有匹配结果，更新命令缓冲区
+        if self.completion_matches:
+            command_prefix = self.command_buffer[0]  # 保存命令前缀（/ 或 ?）
+            self.command_buffer = command_prefix + self.completion_matches[self.completion_index]
+            # 在日志中记录当前补全状态，帮助调试
+            self.viewer.set_message(f"补全: {self.completion_index+1}/{len(self.completion_matches)}")
+        else:
+            self.viewer.set_message("没有匹配的关键词")
+    
+    def _find_matches(self, prefix: str) -> List[str]:
+        """
+        查找匹配前缀的关键词
+        
+        Args:
+            prefix: 要匹配的前缀
+            
+        Returns:
+            List[str]: 匹配的关键词列表
+        """
+        # 不区分大小写搜索
+        prefix_lower = prefix.lower()
+        
+        # 查找所有匹配的关键词
+        matches = [keyword for keyword in self.preset_keywords 
+                  if keyword.lower().startswith(prefix_lower)]
+        
+        # 如果没有严格前缀匹配，尝试包含匹配
+        if not matches:
+            matches = [keyword for keyword in self.preset_keywords 
+                      if prefix_lower in keyword.lower()]
+        
+        return matches
     
     def execute_command(self):
         """执行命令"""
@@ -522,6 +744,13 @@ class CursesUI:
             else:
                 self.viewer.set_message("请输入搜索关键词", True)
         
+        # 添加当前搜索词到关键词列表
+        elif self.command_buffer == ":addkw":
+            if self.add_current_search_to_keywords():
+                self.viewer.set_message("已添加当前搜索词到关键词列表")
+            else:
+                self.viewer.set_message("无法添加关键词或关键词已存在", True)
+        
         # 跳转命令
         elif self.command_buffer.startswith('g'):
             block_num = self.command_buffer[1:].strip()
@@ -548,7 +777,7 @@ class CursesUI:
     
     def _main_loop(self):
         """主循环，处理用户输入"""
-        self.display()
+        # 初始显示在_main方法中已经完成，不再重复显示
         
         while True:
             key = self.stdscr.getch()
@@ -651,6 +880,8 @@ class CursesUI:
         """开始搜索"""
         self.command_mode = True
         self.command_buffer = "/"
+        self.completion_matches = []
+        self.completion_index = 0
         self.draw_command_bar()
         self._process_command_input()
     
@@ -658,6 +889,8 @@ class CursesUI:
         """开始向后搜索"""
         self.command_mode = True
         self.command_buffer = "?"
+        self.completion_matches = []
+        self.completion_index = 0
         self.draw_command_bar()
         self._process_command_input()
     
@@ -727,8 +960,18 @@ class CursesUI:
             self.viewer.set_message("请先使用 '/' 设置搜索词", True)
             return
             
+        # 执行过滤操作
         if not self.viewer.filter_blocks():
             self.viewer.set_message("没有找到匹配的块", True)
+            return
+        
+        # 如果过滤成功且关键词聚焦未启用，自动启用关键词聚焦
+        if not self.viewer.state.focus_keyword:
+            # 确保偏移量与当前窗口高度匹配
+            text_height = self.height - 3
+            self.viewer.state.focus_offset = max(1, text_height // 3)
+            self.viewer.toggle_keyword_focus()
+            self.viewer.set_message("已启用过滤模式和关键词聚焦")
     
     def clear_filter(self):
         """清除过滤"""
@@ -748,4 +991,22 @@ class CursesUI:
     
     def decrease_focus_offset(self):
         """减少关键词聚焦偏移量"""
-        self.viewer.decrease_focus_offset() 
+        self.viewer.decrease_focus_offset()
+    
+    def _init_window_backgrounds(self):
+        """初始化所有窗口的背景颜色"""
+        # 设置状态栏背景
+        self.status_win.bkgd(' ', curses.color_pair(1))
+        self.status_win.refresh()
+        
+        # 设置命令栏背景
+        self.command_win.bkgd(' ', curses.color_pair(3))
+        self.command_win.refresh()
+        
+        # 设置消息栏背景
+        self.message_win.bkgd(' ', curses.color_pair(3))
+        self.message_win.refresh()
+        
+        # 清空文本区域
+        self.text_win.clear()
+        self.text_win.refresh() 

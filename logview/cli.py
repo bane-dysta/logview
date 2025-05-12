@@ -36,7 +36,9 @@ LogView 键盘命令:
 
 搜索和过滤:
   / - 开始搜索
+    + Tab - 关键词补全（循环显示匹配的预设关键词）
   ? - 开始向后搜索
+    + Tab - 关键词补全（同上）
   N - 下一个搜索结果
   P - 上一个搜索结果
   F - 过滤模式 (只显示包含搜索词的块)
@@ -44,6 +46,10 @@ LogView 键盘命令:
   + - 增加关键词聚焦偏移量 (关键词位置上移)
   - - 减少关键词聚焦偏移量 (关键词位置下移)
   c - 清除过滤
+
+命令模式:
+  :addkw - 添加当前搜索词到预设关键词列表
+           (存储在 ~/.config/logview/keywords.json)
 
 显示选项:
   v - 切换完整文件视图/分块视图
@@ -102,7 +108,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         '--version', 
         action='version',
-        version='%(prog)s 0.1.0'
+        version='%(prog)s 0.2.0'
     )
     
     return parser.parse_args()

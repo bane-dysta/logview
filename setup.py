@@ -6,13 +6,13 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="logview",
-    version="0.1.0",
-    author="LogView开发团队",
-    author_email="logview@example.com",
-    description="基于VIM风格的通用日志查看器",
+    version="0.2.0",
+    author="bane",
+    author_email="banerxmd@gmail.com",
+    description="基于VIM风格的Gaussian日志查看器",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/username/logview",
+    url="https://github.com/bane-dysta/logview",
     packages=find_packages(),
     classifiers=[
         "Programming Language :: Python :: 3",
