@@ -66,7 +66,7 @@ def parse_args() -> argparse.Namespace:
         argparse.Namespace: 解析后的参数
     """
     parser = argparse.ArgumentParser(
-        description='LogView - 基于VIM风格的通用日志查看器',
+        description='LogView - VIM风格的通用量子化学日志文件查看器',
         epilog='运行时使用VIM风格键盘命令进行导航和操作。使用-k或--keys查看所有键盘命令。'
     )
     
