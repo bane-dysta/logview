@@ -17,6 +17,47 @@ from .plugins.base import PluginManager
 from .plugins.quantum_chem import QuantumChemPlugin
 
 
+def print_keyboard_commands():
+    """显示所有可用的键盘命令"""
+    keyboard_help = """
+LogView 键盘命令:
+=============================================
+
+导航命令:
+  n / 右箭头 - 下一个块
+  p / 左箭头 - 上一个块
+  f - 第一个块
+  l - 最后一个块
+  g - 跳转到指定块 (例如: g10)
+  j / 下箭头 - 向下滚动
+  k / 上箭头 - 向上滚动
+  J / PageDown - 向下翻页
+  K / PageUp - 向上翻页
+
+搜索和过滤:
+  / - 开始搜索
+  ? - 开始向后搜索
+  N - 下一个搜索结果
+  P - 上一个搜索结果
+  F - 过滤模式 (只显示包含搜索词的块)
+  O - 切换关键词聚焦 (过滤模式下自动聚焦关键词)
+  + - 增加关键词聚焦偏移量 (关键词位置上移)
+  - - 减少关键词聚焦偏移量 (关键词位置下移)
+  c - 清除过滤
+
+显示选项:
+  v - 切换完整文件视图/分块视图
+  # - 切换行号显示
+  H - 切换关键词高亮
+  h - 显示帮助信息
+
+文件操作:
+  s - 保存当前块到文件
+  q - 退出程序
+"""
+    print(keyboard_help)
+
+
 def parse_args() -> argparse.Namespace:
     """
     解析命令行参数
@@ -25,7 +66,8 @@ def parse_args() -> argparse.Namespace:
         argparse.Namespace: 解析后的参数
     """
     parser = argparse.ArgumentParser(
-        description='LogView - 基于VIM风格的通用日志查看器'
+        description='LogView - 基于VIM风格的通用日志查看器',
+        epilog='运行时使用VIM风格键盘命令进行导航和操作。使用-k或--keys查看所有键盘命令。'
     )
     
     parser.add_argument(
@@ -52,6 +94,12 @@ def parse_args() -> argparse.Namespace:
     )
     
     parser.add_argument(
+        '-k', '--keys',
+        action='store_true',
+        help='显示所有可用的键盘命令'
+    )
+    
+    parser.add_argument(
         '--version', 
         action='version',
         version='%(prog)s 0.1.0'
@@ -74,6 +122,19 @@ def main(argv: Optional[List[str]] = None) -> int:
         argv = sys.argv[1:]
         
     args = parse_args()
+    
+    # 如果指定了-k/--keys参数，显示键盘命令并退出
+    if args.keys:
+        print_keyboard_commands()
+        return 0
+    
+    # 如果没有提供文件名且没有其他参数，打印简短帮助
+    if not args.filename and not (args.separator or args.grad or args.irc):
+        print("LogView - 基于VIM风格的通用日志查看器\n")
+        print("用法: logview [选项] 文件路径")
+        print("尝试 'logview --help' 获取更多信息")
+        print("使用 'logview --keys' 查看所有键盘命令")
+        return 0
     
     # 检查要打开的文件是否存在
     if args.filename and not os.path.exists(args.filename):

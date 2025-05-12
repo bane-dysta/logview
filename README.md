@@ -16,15 +16,18 @@ LogView是一个基于命令行的通用日志查看工具，提供VIM风格的�
 ### 从源码安装
 
 ```bash
-git clone https://github.com/username/logview.git
 cd logview
 pip install .
+# 或用户级安装
+pip install --user .
 ```
 
-### 从PyPI安装（暂未发布）
+### 从分发包安装
 
 ```bash
-pip install logview
+pip install logview-0.1.0.tar.gz
+# 或用户级安装
+pip install --user logview-0.1.0.tar.gz
 ```
 
 ## 使用方法
@@ -38,8 +41,8 @@ logview [选项] [文件路径]
 ### 命令行选项
 
 - `-s, --separator SEPARATOR` - 设置自定义分隔符
-- `-g, --grad` - 使用Grad分隔符（用于量子化学计算）
-- `-i, --irc` - 使用IRC分隔符（用于量子化学计算）
+- `-g, --grad` - 使用Grad分隔符（默认gaussian分隔符）
+- `-i, --irc` - 使用IRC分隔符（Gaussian IRC计算分隔符）
 - `--version` - 显示版本信息
 
 ### 键盘操作
